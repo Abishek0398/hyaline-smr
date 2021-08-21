@@ -1,0 +1,11 @@
+[package]
+name = "gclf-hyaline"
+version = "0.1.0"
+authors = ["abishek"]
+edition = "2018"
+
+[dependencies.educe]
+version = "0.4.18"
+features = ["Debug"]
+default-features = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
