@@ -5,12 +5,12 @@ thread_local!{
     static LOCAL_BATCH:RefCell<BatchHandle> = RefCell::new(BatchHandle::new());
 }
 
-const BATCH_SIZE:usize = 16;
+const BATCH_SIZE:usize = 1;
 
 unsafe impl Send for BatchHandle{}
 
 #[derive(Debug)]
-struct BatchHandle {
+pub struct BatchHandle {
     batch:*mut Batch
 }
 
@@ -19,7 +19,7 @@ impl BatchHandle {
         let res = Box::new(Batch::default());
         BatchHandle{batch:Box::into_raw(res)}
     }
-    fn add_to_batch(val:Node) -> Result<(),BatchHandle> {
+    pub fn add_to_batch(val:Node) -> Result<(),BatchHandle> {
         LOCAL_BATCH.with(|b|->Result<(),BatchHandle> {
             let res = unsafe {
                 (&mut*(b.borrow().batch)).add(val)
@@ -55,7 +55,15 @@ impl BatchHandle {
         })
     }
 
-    fn iter(&self)->Iter<'_> {
+    pub fn get_nref(&self)->Option<NonNull<Node>> {
+        unsafe {
+            (&mut*self.batch).first_node.as_mut()
+            .and_then(|input|->Option< NonNull<Node> > {
+                NonNull::new(input.as_mut() as *mut Node)
+            })
+        }
+    }
+    pub fn iter(&self)->Iter<'_> {
         unsafe  {
             (&mut*(self.batch)).iter()
         }
@@ -65,7 +73,7 @@ impl BatchHandle {
 pub struct Batch {
     first_node: Option< Box<Node> >,
     size: usize,
-    nref: AtomicUsize
+    pub nref: AtomicUsize
 }
 
 impl Batch {

@@ -1,89 +1,160 @@
-use crate::headnode::HeadNode;
-use crate::node::*;
+use crate::headnode::{HeadNode, NonAtomicHeadNode};
+use crate::node::Node;
 use crate::guard::Guard;
-use crate::batch::Batch;
-use std::thread::{thread,ThreadId};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use crate::batch::BatchHandle;
+use std::ptr::NonNull;
+use std::sync::atomic::Ordering;
 
-pub struct Collector<const N:usize> {
-    slots : [AtomicDouble::<HeadNode>;N]
+const SLOTS_LENGTH:usize = 1;
+pub struct Collector {
+    slots : [HeadNode;SLOTS_LENGTH],
+    adjs : usize
 }
 
-impl<const N:usize> Collector<N> where
-[AtomicDouble::<HeadNode>;N]:Default 
+impl Collector
 {
     fn new() -> Self {
-        Collector{slots:Default::default()}
+        Collector{
+            slots:Default::default(),
+            adjs:(usize::MAX/SLOTS_LENGTH).wrapping_add(1)
+        }
     }
 
     fn get_slot() -> usize {
-        let mut hasher = DefaultHasher::new();
-        threadid.hash(&mut hasher);
-        hasher.finish()%N
+        0
     }
-    fn add_adjs(node:Option<NonNull<Node>>) {
-        let prev_val = node.unwrap_or_default().as_ref()
-        .NrefNode.unwrap_or_default()
-        .as_ref().nref
-        .fetch_add(ADJS);
-        if prev_val + ADJS == 0 {
-            let x:Box<Batch> = Box::from_raw(node.unwrap_or_default().as_ref().NrefNode.un_wrap().as_mut_ptr());
+
+    unsafe fn traverse(traverse_node:Option<NonNull<Node>>, local_guard:&Guard) {
+        let mut current = traverse_node;
+        while local_guard.is_handle(current) == false {
+            let next = current.unwrap().as_ref().list;
+            let prev_val = current.unwrap().as_ref()
+            .nref_node.unwrap()
+            .as_ref()
+            .nref
+            .fetch_sub(1,Ordering::SeqCst);
+            if prev_val.wrapping_sub(1) == 0 {
+                let _ = Box::from_raw(current.unwrap()
+                .as_ref()
+                .nref_node
+                .unwrap()
+                .as_ptr());
+            }
+            current = next;
         }
     }
-    fn traverse() {
-        
+
+    unsafe fn add_adjs(&self,node:Option<NonNull<Node>>, val:usize) {
+        match node {
+            Some(node_val) => {
+                let prev_val = node_val.as_ref()
+                .nref_node.unwrap()
+                .as_ref()
+                .nref
+                .fetch_add(val,Ordering::SeqCst);
+                if prev_val.wrapping_add(val) == 0 {
+                    let _ = Box::from_raw(node.unwrap()
+                    .as_ref()
+                    .nref_node
+                    .unwrap()
+                    .as_ptr());
+                }
+            },
+            None => {},
+        };
     }
 }
-
-pub trait smr {
+pub trait Smr {
     fn pin(&self) -> Guard;
-    fn unpin(local_guard:&Guard);
-    fn retire<T>(&self,garbage : Box<T>);
+    fn unpin(&self,local_guard:&Guard);
+    fn retire<T:'static>(&self,garbage : Box<T>);
 }
-impl smr for Collector {
+impl Smr for Collector {
    fn pin(&self) -> Guard<'_> {
-       let result_guard = Guard::new(self);
+       let mut result_guard = Guard::new(self);
        result_guard.slot = Collector::get_slot();
        result_guard.handle = self
        .slots[result_guard.slot]
-       .fetch_add(HeadNode::new(None,1))
-       .head_ptr;
+       .fetch_add(None,1,Ordering::Relaxed)
+       .get_guard_handle();
        result_guard
    }
 
    fn unpin(&self,local_guard:&Guard) {
        let start = local_guard.slot;
-       let curr_head = HeadNode::Default();
-       let traverse_node:Option<NonNull<Node>> = None;
        loop {
-           curr_head = self.slots[start].load();
-           cas_node = HeadNode::new(curr_head.head_ptr,curr_head.head_count.wrapping_sub(1));
-           if curr_head.head_ptr != local_guard.handle {
-                if let Some(ptr) = curr_head.head_ptr {
-                    unsafe{traverse_node = ptr.as_ref().list;}
-                }
+           let curr_head:NonAtomicHeadNode = self.slots[start].load(Ordering::Relaxed);
+           let unpin_result = self.slots[start].unpin_slot(curr_head,local_guard);
+           match unpin_result {
+              Ok(traverse_node) => {
+                  if curr_head.head_count == 1 && curr_head.head_ptr !=None {
+                       unsafe {
+                           self.add_adjs(curr_head.head_ptr,self.adjs);
+                        };
+                  }
+                  unsafe {Collector::traverse(traverse_node,local_guard);}
+                  break;
+              },
+              Err(_) => {},
            }
-           if self.slots[start].compare_exchange(x,cas_node).is_ok() == true {
-               break;
-           }
-       }
-       if curr_head.head_count == 1 && curr_head.head_ptr !=None {
-           Collector::add_adjs(curr_head.head_ptr);
-       }
-       Collector::traverse(traverse_node,local_guard.handle);   
+       }        
    }
 
-   fn retire<T>(&self,garbage : Box<T>) {
-       let garb_node = Node::new(NodeVal::from(garbage));
+   fn retire<T:'static>(&self,garbage : Box<T>) {
+       let garb_node = Node::new(garbage);
        let res = BatchHandle::add_to_batch(garb_node);
-       if res.is_err()==true {
-            let batch_iter = res.expect_err().iter();
-            for slot in slots {
+       if let Err(batch_handle) = res {
+            let mut batch_iter = batch_handle.iter();
+            let nref_node = batch_handle.get_nref();
+            let mut empty_slots= 0;
+            for slot in self.slots.iter() {
                 if let Some(val) = batch_iter.next() {
-                    slot.insert(val);
+                    let add_result = slot.add_to_slot(val);
+                    match add_result {
+                        Ok(val) => {
+                            unsafe {
+                                self.add_adjs(val.0,
+                                val.1 + self.adjs
+                                );
+                            }
+                        },
+                        Err(_) => empty_slots = empty_slots + self.adjs,
+                    }
                 }
+            }
+            if empty_slots != 0 {
+                unsafe {self.add_adjs(nref_node,empty_slots);};
             }
        }
    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Collector, Smr};
+
+    struct TestNode {
+        foo:i32,
+        bar:i32
+    }
+    impl Drop for TestNode {
+        fn drop(&mut self) {
+            println!("Testnode drop woo hoo : {}", self.foo);
+        }
+    }
+    #[test]
+    fn collector_test() {
+        let collector = Collector::new();
+        let first_garb = Box::new(TestNode{foo:1,bar:2});
+        let second_garb = Box::new(TestNode{foo:2,bar:2});
+        let third_garb = Box::new(TestNode{foo:3,bar:2});
+        let fourth_garb = Box::new(TestNode{foo:4,bar:2});
+        {
+            let _guard = collector.pin();
+            collector.retire(first_garb); 
+            collector.retire(second_garb);
+            collector.retire(third_garb); 
+            collector.retire(fourth_garb);
+        }
+    }
 }
