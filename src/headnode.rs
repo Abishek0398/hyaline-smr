@@ -59,7 +59,14 @@ impl HeadNode {
     }
 
     pub(crate) fn unpin_slot(&self,curr_head:NonAtomicHeadNode, local_guard:&Guard)->Result<Option<NonNull<Node>>,()> {
-        let cas_node = NonAtomicHeadNode::new(curr_head.head_ptr,curr_head.head_count.wrapping_sub(1));
+        let cas_node = {
+            if curr_head.head_count == 1 {
+                NonAtomicHeadNode::new(None,0)
+            }
+            else {
+                NonAtomicHeadNode::new(curr_head.head_ptr,curr_head.head_count.wrapping_sub(1))
+            }
+        };
         let mut traverse_node = None;
         if local_guard.is_handle(curr_head.head_ptr) == false {
             if let Some(ptr) = curr_head.head_ptr {

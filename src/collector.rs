@@ -3,7 +3,7 @@ use crate::node::Node;
 use crate::guard::Guard;
 use crate::batch::BatchHandle;
 use std::ptr::NonNull;
-use std::sync::atomic::Ordering;
+use crate::sync::Ordering;
 
 const SLOTS_LENGTH:usize = 1;
 pub struct Collector {
@@ -13,7 +13,7 @@ pub struct Collector {
 
 impl Collector
 {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Collector{
             slots:Default::default(),
             adjs:(usize::MAX/SLOTS_LENGTH).wrapping_add(1)
@@ -131,7 +131,10 @@ impl Smr for Collector {
 
 #[cfg(test)]
 mod tests {
-    use super::{Collector, Smr};
+    use loom::thread;
+
+    use crate::retire;
+    use crate::pin;
 
     struct TestNode {
         foo:i32,
@@ -144,17 +147,23 @@ mod tests {
     }
     #[test]
     fn collector_test() {
-        let collector = Collector::new();
-        let first_garb = Box::new(TestNode{foo:1,bar:2});
-        let second_garb = Box::new(TestNode{foo:2,bar:2});
-        let third_garb = Box::new(TestNode{foo:3,bar:2});
-        let fourth_garb = Box::new(TestNode{foo:4,bar:2});
-        {
-            let _guard = collector.pin();
-            collector.retire(first_garb); 
-            collector.retire(second_garb);
-            collector.retire(third_garb); 
-            collector.retire(fourth_garb);
-        }
+        loom::model(|| {
+            let first_garb = Box::new(TestNode{foo:1,bar:2});
+            let second_garb = Box::new(TestNode{foo:2,bar:2});
+            let third_garb = Box::new(TestNode{foo:3,bar:2});
+            let fourth_garb = Box::new(TestNode{foo:4,bar:2});
+            {
+                let _guard = pin();
+                retire(first_garb); 
+                retire(second_garb);
+            }
+
+            let handle = thread::spawn(|| {
+                {let _guard = pin();
+                retire(third_garb); 
+                retire(fourth_garb);}         
+            });
+            handle.join().unwrap();
+        });
     }
 }

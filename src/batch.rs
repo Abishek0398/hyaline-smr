@@ -1,4 +1,5 @@
-use std::{cell::RefCell, marker::PhantomData, ptr::NonNull, sync::atomic::AtomicUsize};
+use crate::sync::{AtomicUsize, thread_local};
+use std::{cell::RefCell,marker::PhantomData, ptr::NonNull};
 use crate::node::Node;
 
 thread_local!{
@@ -28,8 +29,8 @@ impl BatchHandle {
                 let ret_val = BatchHandle{batch:b.borrow().batch};
                 b.borrow_mut().batch = Box::into_raw(Box::new(Batch::default()));
                 unsafe {
-                    let _ = (&mut*(b.borrow().batch)).add(res.err().unwrap_or_default())
-                    .unwrap_or_default();
+                    let _ = (&mut*(b.borrow().batch)).add(res.err().unwrap())
+                    .unwrap();
                 };
                 Err(ret_val)
             }
@@ -147,6 +148,7 @@ impl<'a> Iterator for Iter<'a> {
                     }
                     else {
                         let mut batch_filler = Box::new(Node::default());
+                        batch_filler.nref_node = mut_res.nref_node;
                         let return_val = NonNull::new(batch_filler.as_mut() as *mut Node);
                         mut_res.batch = Some(batch_filler);
                         return_val
