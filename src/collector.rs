@@ -24,10 +24,15 @@ impl Collector
         0
     }
 
-    unsafe fn traverse(traverse_node:Option<NonNull<Node>>, local_guard:&Guard) {
-        let mut current = traverse_node;
-        while local_guard.is_handle(current) == false {
-            let next = current.unwrap().as_ref().list;
+    unsafe fn traverse(traverse_node:NonNull<Node>, local_guard:&Guard) {
+        let mut current = traverse_node.as_ref().list;
+        loop {
+            match current {
+                Some(_) => {},
+                None => {
+                    break;
+                },
+            };
             let prev_val = current.unwrap().as_ref()
             .nref_node.unwrap()
             .as_ref()
@@ -40,7 +45,10 @@ impl Collector
                 .unwrap()
                 .as_ptr());
             }
-            current = next;
+            if local_guard.is_handle(current) == true {
+                break;
+            }
+            current = current.unwrap().as_ref().list;
         }
     }
 
@@ -92,7 +100,9 @@ impl Smr for Collector {
                            self.add_adjs(curr_head.head_ptr,self.adjs);
                         };
                   }
-                  unsafe {Collector::traverse(traverse_node,local_guard);}
+                  if let Some(act_traverse_node) = traverse_node {
+                    unsafe {Collector::traverse(act_traverse_node,local_guard)};
+                  }
                   break;
               },
               Err(_) => {},
@@ -113,8 +123,8 @@ impl Smr for Collector {
                     match add_result {
                         Ok(val) => {
                             unsafe {
-                                self.add_adjs(val.0,
-                                val.1 + self.adjs
+                                self.add_adjs(val.head_ptr,
+                                val.head_count + self.adjs
                                 );
                             }
                         },
@@ -152,17 +162,17 @@ mod tests {
             let second_garb = Box::new(TestNode{foo:2,bar:2});
             let third_garb = Box::new(TestNode{foo:3,bar:2});
             let fourth_garb = Box::new(TestNode{foo:4,bar:2});
-            {
-                let _guard = pin();
-                retire(first_garb); 
-                retire(second_garb);
-            }
+
+            let _guard1 = pin();
+            retire(first_garb); 
+            retire(second_garb);
 
             let handle = thread::spawn(|| {
-                {let _guard = pin();
+                let _guard2 = pin();
                 retire(third_garb); 
-                retire(fourth_garb);}         
+                retire(fourth_garb);     
             });
+
             handle.join().unwrap();
         });
     }

@@ -1,8 +1,7 @@
 use std::ptr::NonNull;
 
 use atomicdouble::AtomicDouble;
-use atomicdouble::Ordering;
-use atomicdouble::Ordering::*;
+use crate::sync::Ordering;
 
 use crate::guard::Guard;
 use crate::node::Node;
@@ -24,8 +23,8 @@ impl HeadNode {
     }
 
     pub(crate)fn add_to_slot(&self, mut val:NonNull<Node>)->
-    Result<(Option<NonNull<Node>>,usize),()> {
-        let mut curr_node = self.head.load(Relaxed);
+    Result<NonAtomicHeadNode,()> {
+        let mut curr_node = self.head.load(Ordering::Relaxed);
 
         loop {
             if curr_node.head_count == 0 {
@@ -42,12 +41,12 @@ impl HeadNode {
 
             let cxchg_result = self.head.compare_exchange(curr_node,
                 new_node,
-        Relaxed,
-        Relaxed
+        Ordering::Relaxed,
+        Ordering::Relaxed
             );
             match cxchg_result {
                 Ok(_) => {
-                    return Ok((curr_node.head_ptr,curr_node.head_count));
+                    return Ok(curr_node);
                 },
                 Err(node) => curr_node = node,
             };
@@ -69,14 +68,12 @@ impl HeadNode {
         };
         let mut traverse_node = None;
         if local_guard.is_handle(curr_head.head_ptr) == false {
-            if let Some(ptr) = curr_head.head_ptr {
-                unsafe{traverse_node = ptr.as_ref().list;}
-            }
+            traverse_node = curr_head.head_ptr;
         }
         match self.head.compare_exchange(curr_head
             ,cas_node
-            ,Relaxed
-            ,Relaxed
+            ,Ordering::Relaxed
+            ,Ordering::Relaxed
         ) {
             Ok(_) => Ok(traverse_node),
             Err(_) => Err(()),
