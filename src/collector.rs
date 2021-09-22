@@ -3,9 +3,10 @@ use crate::node::Node;
 use crate::guard::Guard;
 use crate::batch::BatchHandle;
 use std::ptr::NonNull;
-use crate::sync::Ordering;
+use std::sync::atomic::Ordering;
 
-const SLOTS_LENGTH:usize = 1;
+const SLOTS_LENGTH:usize = 32;
+#[derive(Debug)]
 pub struct Collector {
     slots : [HeadNode;SLOTS_LENGTH],
     adjs : usize
@@ -71,6 +72,30 @@ impl Collector
             None => {},
         };
     }
+
+    pub(crate) fn process_batch_handle(&self, batch_handle:&BatchHandle) {
+        let mut batch_iter = batch_handle.iter();
+        let nref_node = batch_handle.get_nref();
+        let mut empty_slots:usize= 0;
+        for slot in self.slots.iter() {
+            if let Some(val) = batch_iter.next() {
+                let add_result = slot.add_to_slot(val);
+                match add_result {
+                    Ok(val) => {
+                        unsafe {
+                            self.add_adjs(val.head_ptr,
+                            val.head_count + self.adjs
+                            );
+                        }
+                    },
+                    Err(_) => empty_slots = empty_slots + 1,
+                }
+            }
+        }
+        if empty_slots > 0 {
+            unsafe {self.add_adjs(nref_node,empty_slots.wrapping_mul(self.adjs));};
+        }
+    }
 }
 pub trait Smr {
     fn pin(&self) -> Guard;
@@ -112,39 +137,19 @@ impl Smr for Collector {
 
    fn retire<T:'static>(&self,garbage : Box<T>) {
        let garb_node = Node::new(garbage);
-       let res = BatchHandle::add_to_batch(garb_node);
-       if let Err(batch_handle) = res {
-            let mut batch_iter = batch_handle.iter();
-            let nref_node = batch_handle.get_nref();
-            let mut empty_slots= 0;
-            for slot in self.slots.iter() {
-                if let Some(val) = batch_iter.next() {
-                    let add_result = slot.add_to_slot(val);
-                    match add_result {
-                        Ok(val) => {
-                            unsafe {
-                                self.add_adjs(val.head_ptr,
-                                val.head_count + self.adjs
-                                );
-                            }
-                        },
-                        Err(_) => empty_slots = empty_slots + self.adjs,
-                    }
-                }
-            }
-            if empty_slots != 0 {
-                unsafe {self.add_adjs(nref_node,empty_slots);};
-            }
+       let res = BatchHandle::add_to_batch(self,garb_node);
+       if let Err(_batch_handle) = res {
        }
    }
 }
 
 #[cfg(test)]
 mod tests {
-    use loom::thread;
+    use std::sync::Arc;
+    use std::thread;
 
-    use crate::retire;
-    use crate::pin;
+    use super::Collector;
+    use crate::collector::Smr;
 
     struct TestNode {
         foo:i32,
@@ -157,23 +162,40 @@ mod tests {
     }
     #[test]
     fn collector_test() {
-        loom::model(|| {
-            let first_garb = Box::new(TestNode{foo:1,bar:2});
-            let second_garb = Box::new(TestNode{foo:2,bar:2});
-            let third_garb = Box::new(TestNode{foo:3,bar:2});
-            let fourth_garb = Box::new(TestNode{foo:4,bar:2});
+        /*let loc_coll_1 = Arc::new(Collector::new());
+        let loc_coll_2 = loc_coll_1.clone();
+        let loc_coll_3 = loc_coll_1.clone();*/
 
-            let _guard1 = pin();
-            retire(first_garb); 
-            retire(second_garb);
+        let first_garb = Box::new(TestNode{foo:1,bar:2});
+        let second_garb = Box::new(TestNode{foo:2,bar:2});
+        let third_garb = Box::new(TestNode{foo:3,bar:2});
+        let fourth_garb = Box::new(TestNode{foo:4,bar:2});
+        let five_garb = Box::new(TestNode{foo:5,bar:2});
+        let six_garb = Box::new(TestNode{foo:6,bar:2});
 
-            let handle = thread::spawn(|| {
-                let _guard2 = pin();
-                retire(third_garb); 
-                retire(fourth_garb);     
-            });
+        {
+            let _guard1 = crate::pin();
+            crate::retire(first_garb); 
+            crate::retire(second_garb);
+        }
 
-            handle.join().unwrap();
+        let handle1 = thread::spawn(move|| {
+            {
+                let _guard2 = crate::pin();
+                crate::retire(third_garb); 
+                crate::retire(fourth_garb);
+            }
         });
+
+        let handle2 = thread::spawn(move|| {
+            {
+                let _guard3 = crate::pin();
+                crate::retire(five_garb); 
+                crate::retire(six_garb);
+            }
+        });
+        
+        handle1.join().unwrap();
+        handle2.join().unwrap();
     }
 }

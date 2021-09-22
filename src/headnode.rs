@@ -1,11 +1,12 @@
 use std::ptr::NonNull;
 
 use atomicdouble::AtomicDouble;
-use crate::sync::Ordering;
+use atomicdouble::Ordering;
 
 use crate::guard::Guard;
 use crate::node::Node;
 
+#[derive(Debug)]
 pub(crate)struct HeadNode {
     head : AtomicDouble<NonAtomicHeadNode>
 }
@@ -103,6 +104,8 @@ impl Default for HeadNode {
         Self { head: Default::default() }
     }
 }
+
+#[derive(Debug)]
 pub(crate) struct NonAtomicHeadNode {
     pub head_ptr : Option< NonNull<Node> >,
     pub head_count : usize

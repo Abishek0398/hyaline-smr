@@ -2,7 +2,7 @@
 
 use crate::collector::{Collector, Smr};
 use crate::guard::Guard;
-use crate::sync::lazy_static;
+use lazy_static::lazy_static;
 
 lazy_static! {
     /// The global default garbage collector.
@@ -15,7 +15,7 @@ pub fn pin() -> Guard<'static> {
     COLLECTOR.pin()
 }
 
-///Retires a node from teh data structure. 
+///Retires a node from the data structure. 
 ///No new threads should be able to access the retired node after retiring
 #[inline]
 pub fn retire<T:'static>(garbage:Box<T>) {

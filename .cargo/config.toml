@@ -1,2 +1,2 @@
-[build]
-rustflags = ["--cfg", "loom"] 
+#[build]
+#rustflags = ["--cfg", "loom"] 

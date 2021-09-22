@@ -5,9 +5,9 @@ use crate::collector::Collector;
 use crate::collector::Smr;
 
 pub struct Guard<'a> {
-    pub active_collector : &'a Collector,
-    pub handle : Option< &'a Node>,
-    pub slot : usize
+    pub(crate) active_collector : &'a Collector,
+    pub(crate) handle : Option< &'a Node>,
+    pub(crate) slot : usize
 }
 
 impl<'a> Guard<'a> {

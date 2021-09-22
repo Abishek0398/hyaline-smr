@@ -7,4 +7,3 @@ pub mod node;
 pub mod headnode;
 pub mod guard;
 pub mod collector;
-mod sync;

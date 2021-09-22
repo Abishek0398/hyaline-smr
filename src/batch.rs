@@ -1,35 +1,51 @@
-use crate::sync::{AtomicUsize, thread_local};
-use std::{cell::RefCell,marker::PhantomData, ptr::NonNull};
+use std::cell::UnsafeCell;
+use std::sync::atomic::AtomicUsize;
+use std::{marker::PhantomData, ptr::NonNull};
+
+use crate::collector::Collector;
 use crate::node::Node;
 
 thread_local!{
-    static LOCAL_BATCH:RefCell<BatchHandle> = RefCell::new(BatchHandle::new());
+    static LOCAL_BATCH:UnsafeCell<BatchHandle> = UnsafeCell::new(BatchHandle::new());
 }
 
-const BATCH_SIZE:usize = 1;
+const BATCH_SIZE:usize = 32;
 
 unsafe impl Send for BatchHandle{}
 
 #[derive(Debug)]
 pub struct BatchHandle {
-    batch:*mut Batch
+    batch:*mut Batch,
+    collector: Option<*const Collector>,
 }
 
 impl BatchHandle {
     fn new()->Self {
         let res = Box::new(Batch::default());
-        BatchHandle{batch:Box::into_raw(res)}
+        BatchHandle{
+            batch:Box::into_raw(res),
+            collector: None
+        }
     }
-    pub fn add_to_batch(val:Node) -> Result<(),BatchHandle> {
+    pub fn add_to_batch(collector:&Collector, val:Node) -> Result<(),BatchHandle> {
         LOCAL_BATCH.with(|b|->Result<(),BatchHandle> {
+            let handle = unsafe {
+                b.get().as_mut().unwrap()
+            };
             let res = unsafe {
-                (&mut*(b.borrow().batch)).add(val)
+                handle.set_collector(collector);
+                (*handle.batch).add(val)
             };
             if res.is_err() == true {
-                let ret_val = BatchHandle{batch:b.borrow().batch};
-                b.borrow_mut().batch = Box::into_raw(Box::new(Batch::default()));
+                let ret_val = BatchHandle{
+                    batch:handle.batch,
+                    collector:handle.collector
+                };
+
+                handle.batch = Box::into_raw(Box::new(Batch::default()));
+
                 unsafe {
-                    let _ = (&mut*(b.borrow().batch)).add(res.err().unwrap())
+                    let _ = (*handle.batch).add(res.err().unwrap())
                     .unwrap();
                 };
                 Err(ret_val)
@@ -43,7 +59,7 @@ impl BatchHandle {
     fn is_full()->bool {
         LOCAL_BATCH.with(|b|->bool {
             unsafe  {
-                (&*(b.borrow().batch)).is_full()
+                (*b.get().as_ref().unwrap().batch).is_full()
             }
         })
     }
@@ -51,14 +67,14 @@ impl BatchHandle {
     fn current_iter()->Iter<'static> {
         LOCAL_BATCH.with(|b|->Iter<'_> {
             unsafe  {
-                (&mut*(b.borrow().batch)).iter()
+                (*b.get().as_ref().unwrap()).iter()
             }
         })
     }
 
     pub fn get_nref(&self)->Option<NonNull<Node>> {
         unsafe {
-            (&mut*self.batch).first_node.as_mut()
+            (*self.batch).first_node.as_mut()
             .and_then(|input|->Option< NonNull<Node> > {
                 NonNull::new(input.as_mut() as *mut Node)
             })
@@ -66,11 +82,28 @@ impl BatchHandle {
     }
     pub fn iter(&self)->Iter<'_> {
         unsafe  {
-            (&mut*(self.batch)).iter()
+            (*self.batch).iter()
+        }
+    }
+    fn set_collector(&mut self, collector:&Collector) {
+        if let None = self.collector {
+            self.collector = Some(collector);
         }
     }
 }
 
+impl Drop for BatchHandle {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(val)=self.collector {
+                val.as_ref().unwrap().process_batch_handle(self);
+            }
+            else {
+                println!("ffs");
+            }
+        }
+    }
+}
 pub struct Batch {
     first_node: Option< Box<Node> >,
     size: usize,
@@ -79,7 +112,7 @@ pub struct Batch {
 
 impl Batch {
     fn new()->Self {
-        Batch{first_node:None,size:0,nref:AtomicUsize::default()}
+        Batch{first_node:None,size:0,nref:AtomicUsize::new(0)}
     }
 
     fn iter(&mut self)->Iter<'_> {
@@ -117,7 +150,7 @@ impl Default for Batch {
         Batch{
             first_node:None,
             size:0,
-            nref:AtomicUsize::default()
+            nref:AtomicUsize::new(0)
         }
     }
 }
@@ -164,7 +197,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
 
     use std::convert::TryInto;
@@ -210,4 +243,4 @@ mod tests {
             };
         }
     }
-}
+}*/
