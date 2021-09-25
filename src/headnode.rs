@@ -32,7 +32,7 @@ impl HeadNode {
                 return Err(());
             }
             unsafe {
-                val.as_mut().list = curr_node.head_ptr;
+                val.as_mut().set_list(curr_node.head_ptr);
             };
 
             let new_node = NonAtomicHeadNode {
@@ -85,17 +85,9 @@ impl HeadNode {
         self.head.load(order)
     }
 
-    pub(crate) fn compare_exchange(&self) {
-
-    }
-
     pub(crate) fn fetch_add(&self,head_ptr:Option<NonNull<Node>>,head_cnt:usize,order:Ordering)->NonAtomicHeadNode {
         let add_node = NonAtomicHeadNode::new(head_ptr,head_cnt);
         self.head.fetch_add(add_node,order)
-    }
-
-    pub(crate) fn fetch_sub(&self) {
-
     }
 }
 

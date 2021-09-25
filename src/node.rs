@@ -1,5 +1,6 @@
 use std::ptr::NonNull;
-use crate::batch::Batch;
+use crate::{batch::Batch, guard::Guard};
+use std::sync::atomic::Ordering;
 use educe::Educe;
 
 /*
@@ -13,19 +14,100 @@ the drops will happen through that link.
 pub struct Node {
     #[educe(Debug(ignore))]
     val: Option< Box<dyn Garbage> >,
-    pub list : Option< NonNull<Node> >,
-    pub batch : Option< Box<Node> >,
-    pub nref_node: Option<NonNull<Batch>>
+    list : Option< NonNull<Node> >,
+    batch : Option< Box<Node> >,
+    nref_node: Option<NonNull<Batch>>
 }
 
 impl Node {
-    pub fn new<T:'static>(val:Box<T>) -> Self {
+    pub(crate) fn new<T:'static>(val:Box<T>) -> Self {
         Node{
             val:Some(Box::new(GarbageNode::new(val))),
             list:None,
             batch:None,
             nref_node:None
         }
+    }
+
+    pub(crate) fn set_list(&mut self,list:Option<NonNull<Node>>) {
+        self.list = list;
+    }
+
+    pub(crate) fn set_batch(&mut self,batch:Option<Box<Node>>) {
+        self.batch = batch;
+    }
+
+    pub(crate) fn set_nref_node(&mut self,nref_node:Option<NonNull<Batch>>) {
+        self.nref_node = nref_node;
+    }
+
+    pub(crate) unsafe fn fetch_add_nref(&self,val:usize,ordering:Ordering)->usize{
+        self.nref_node.unwrap()
+        .as_ref()
+        .nref
+        .fetch_add(val,ordering)
+    }
+
+    pub(crate) unsafe fn traverse(&self, local_guard:&Guard) {
+        let mut current = self.list;
+        loop {
+            match current {
+                Some(_) => {},
+                None => {
+                    break;
+                },
+            };
+            let prev_val = current.unwrap().as_ref()
+            .nref_node.unwrap()
+            .as_ref()
+            .nref
+            .fetch_sub(1,Ordering::SeqCst);
+            if prev_val.wrapping_sub(1) == 0 {
+                let _ = Box::from_raw(current.unwrap()
+                .as_ref()
+                .nref_node
+                .unwrap()
+                .as_ptr());
+            }
+            if local_guard.is_handle(current) == true {
+                break;
+            }
+            current = current.unwrap().as_ref().list;
+        }
+    }
+
+    pub(crate) unsafe fn add_adjs(node:Option<NonNull<Node>>, val:usize) {
+        match node {
+            Some(node_val) => {
+                let prev_val = node_val.as_ref().fetch_add_nref(val, Ordering::SeqCst);
+                if prev_val.wrapping_add(val) == 0 {
+                    let _ = Box::from_raw(node_val.as_ref().get_batch_ptr());
+                }
+            },
+            None => {},
+        };
+    }
+
+    pub(crate) fn produce_nodes_filler(&mut self)-> Option<NonNull<Node>> {
+        match self.batch.as_mut() {
+            Some(val) => {
+                NonNull::new(val.as_mut() as *mut Node)
+            },
+
+            None => {
+                let mut batch_filler = Box::new(Node::default());
+                let return_val = NonNull::new(batch_filler.as_mut() as *mut Node);
+                batch_filler.nref_node = self.nref_node;
+                self.batch = Some(batch_filler);
+                return_val
+            }
+        }
+    }
+
+    pub(crate) unsafe fn get_batch_ptr(&self)->*mut Batch {
+        self.nref_node
+        .unwrap()
+        .as_ptr()
     }
 }
 

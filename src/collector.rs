@@ -2,7 +2,6 @@ use crate::headnode::{HeadNode, NonAtomicHeadNode};
 use crate::node::Node;
 use crate::guard::Guard;
 use crate::batch::BatchHandle;
-use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
 
 const SLOTS_LENGTH:usize = 32;
@@ -25,65 +24,17 @@ impl Collector
         0
     }
 
-    unsafe fn traverse(traverse_node:NonNull<Node>, local_guard:&Guard) {
-        let mut current = traverse_node.as_ref().list;
-        loop {
-            match current {
-                Some(_) => {},
-                None => {
-                    break;
-                },
-            };
-            let prev_val = current.unwrap().as_ref()
-            .nref_node.unwrap()
-            .as_ref()
-            .nref
-            .fetch_sub(1,Ordering::SeqCst);
-            if prev_val.wrapping_sub(1) == 0 {
-                let _ = Box::from_raw(current.unwrap()
-                .as_ref()
-                .nref_node
-                .unwrap()
-                .as_ptr());
-            }
-            if local_guard.is_handle(current) == true {
-                break;
-            }
-            current = current.unwrap().as_ref().list;
-        }
-    }
-
-    unsafe fn add_adjs(&self,node:Option<NonNull<Node>>, val:usize) {
-        match node {
-            Some(node_val) => {
-                let prev_val = node_val.as_ref()
-                .nref_node.unwrap()
-                .as_ref()
-                .nref
-                .fetch_add(val,Ordering::SeqCst);
-                if prev_val.wrapping_add(val) == 0 {
-                    let _ = Box::from_raw(node.unwrap()
-                    .as_ref()
-                    .nref_node
-                    .unwrap()
-                    .as_ptr());
-                }
-            },
-            None => {},
-        };
-    }
-
     pub(crate) fn process_batch_handle(&self, batch_handle:&BatchHandle) {
         let mut batch_iter = batch_handle.iter();
-        let nref_node = batch_handle.get_nref();
         let mut empty_slots:usize= 0;
+        let nref_node = batch_handle.get_nref();
         for slot in self.slots.iter() {
             if let Some(val) = batch_iter.next() {
                 let add_result = slot.add_to_slot(val);
                 match add_result {
                     Ok(val) => {
                         unsafe {
-                            self.add_adjs(val.head_ptr,
+                            Node::add_adjs(val.head_ptr,
                             val.head_count + self.adjs
                             );
                         }
@@ -93,7 +44,7 @@ impl Collector
             }
         }
         if empty_slots > 0 {
-            unsafe {self.add_adjs(nref_node,empty_slots.wrapping_mul(self.adjs));};
+            unsafe {Node::add_adjs(nref_node,empty_slots.wrapping_mul(self.adjs));};
         }
     }
 }
@@ -122,11 +73,13 @@ impl Smr for Collector {
               Ok(traverse_node) => {
                   if curr_head.head_count == 1 && curr_head.head_ptr !=None {
                        unsafe {
-                           self.add_adjs(curr_head.head_ptr,self.adjs);
+                           Node::add_adjs(curr_head.head_ptr,self.adjs);
                         };
                   }
                   if let Some(act_traverse_node) = traverse_node {
-                    unsafe {Collector::traverse(act_traverse_node,local_guard)};
+                        unsafe {
+                            act_traverse_node.as_ref().traverse(local_guard);
+                        };
                   }
                   break;
               },
@@ -145,11 +98,7 @@ impl Smr for Collector {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use std::thread;
-
-    use super::Collector;
-    use crate::collector::Smr;
 
     struct TestNode {
         foo:i32,
@@ -162,9 +111,6 @@ mod tests {
     }
     #[test]
     fn collector_test() {
-        /*let loc_coll_1 = Arc::new(Collector::new());
-        let loc_coll_2 = loc_coll_1.clone();
-        let loc_coll_3 = loc_coll_1.clone();*/
 
         let first_garb = Box::new(TestNode{foo:1,bar:2});
         let second_garb = Box::new(TestNode{foo:2,bar:2});
@@ -193,9 +139,10 @@ mod tests {
                 crate::retire(five_garb); 
                 crate::retire(six_garb);
             }
+
         });
-        
-        handle1.join().unwrap();
+
         handle2.join().unwrap();
+        handle1.join().unwrap();
     }
 }

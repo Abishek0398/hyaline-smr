@@ -5,7 +5,7 @@ use crate::collector::Collector;
 use crate::collector::Smr;
 
 pub struct Guard<'a> {
-    pub(crate) active_collector : &'a Collector,
+    active_collector : &'a Collector,
     pub(crate) handle : Option< &'a Node>,
     pub(crate) slot : usize
 }
