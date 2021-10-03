@@ -22,9 +22,7 @@ impl<'a> Guard<'a> {
         });
 
         let second = check_val.and_then(|val| {
-            unsafe {
-                Some(val.as_ref() as *const Node)
-            }
+            Some(val.as_ptr() as *const Node)
         });
 
         first == second

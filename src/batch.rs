@@ -31,6 +31,8 @@ impl BatchHandle {
         LOCAL_BATCH.with(|b| {
             let mut handle = b.borrow_mut();
             handle.set_collector(collector);
+            //This is safe because the batch pointer is always initialized when accesing the thread
+            //local see new(). Also no other thread can access the batch as its local to each thread
             let res = unsafe {
                 (*handle.batch).add(val)
             };
@@ -75,18 +77,22 @@ impl BatchHandle {
     }
 
     pub fn get_nref(&self)->Option<NonNull<Node>> {
-        unsafe {
-            (*self.batch).first_node.as_mut()
-            .and_then(|input|->Option< NonNull<Node> > {
-                NonNull::new(input.as_mut() as *mut Node)
-            })
-        }
+        let handle = unsafe {
+            &mut *self.batch
+        };
+        
+        handle.first_node.as_mut()
+        .and_then(|input|->Option< NonNull<Node> > {
+            NonNull::new(input.as_mut())
+        })
     }
+
     pub fn iter(&self)->Iter<'_> {
         unsafe  {
             (*self.batch).iter()
         }
     }
+
     fn set_collector(&mut self, collector:&Collector) {
         if self.collector == std::ptr::null(){
             self.collector = collector;
@@ -96,6 +102,9 @@ impl BatchHandle {
 
 impl Drop for BatchHandle {
     fn drop(&mut self) {
+        // This is safe because we null check the pointer and the pointer will always
+        //point to the batch's active collector and the collector is of static scope or
+        // it outlives the rest of the program.
         unsafe {
             if let Some(coll) = self.collector.as_ref() {
                 coll.process_batch_handle(self);
@@ -125,7 +134,7 @@ impl Batch {
 
     fn add(&mut self,mut val:Node) -> Result<(),Node> {
         if self.is_full() == false {
-            val.set_nref_node(NonNull::new(self as *mut Batch));
+            val.set_nref_node(NonNull::new(self));
             val.set_batch(self.first_node.take());
             self.first_node = Some(Box::new(val));
             self.size = self.size + 1;
@@ -169,6 +178,7 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self)->Option<Self::Item> {
         if self.len !=0 {
             let res = self.current_node;
+            //safe because we check for the size of the batch above
             let mut_res:&mut Node = unsafe {
                 res.unwrap().as_mut()
             };

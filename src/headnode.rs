@@ -23,19 +23,19 @@ impl HeadNode {
         }
     }
 
-    pub(crate) unsafe fn add_to_slot(&self, mut val:NonNull<Node>)->
+    pub(crate) fn add_to_slot(&self, val:&mut Node)->
     Result<NonAtomicHeadNode,()> {
         let mut curr_node = self.head.load(Ordering::SeqCst);
 
         loop {
             if curr_node.head_count == 0 {
-                val.as_mut().set_list(None);
+                val.set_list(None);
                 return Err(());
             }
-            val.as_mut().set_list(curr_node.head_ptr);
+            val.set_list(curr_node.head_ptr);
 
             let new_node = NonAtomicHeadNode {
-                head_ptr:Some(val),
+                head_ptr:NonNull::new(val),
                 head_count:curr_node.head_count
             };
 
@@ -54,8 +54,12 @@ impl HeadNode {
     }
 
     pub(crate)fn pin_slot(&self)->Option<&'static Node> {
-        self.fetch_add(None,1,Ordering::SeqCst)
-       .get_guard_handle()
+        unsafe {
+            // Safe because the headptr obtained from NonAtomicHeadNode returned
+            // from fetchadd is either valid(The algorithm ensures this) or None
+            self.fetch_add(None,1,Ordering::SeqCst)
+            .get_guard_handle()
+        }
     }
 
     pub(crate) fn unpin_slot(&self,curr_head:NonAtomicHeadNode, local_guard:&Guard)->Result<Option<NonNull<Node>>,()> {
@@ -128,11 +132,9 @@ impl NonAtomicHeadNode {
         NonAtomicHeadNode {head_ptr:ptr,head_count:cnt}
     }
 
-    pub fn get_guard_handle(self) -> Option<&'static Node> {
+    pub unsafe fn get_guard_handle(self) -> Option<&'static Node> {
         self.head_ptr.map(|val|->&Node {
-            unsafe {
-                val.as_ref()
-            }
+            val.as_ref()
         })
     }
 }

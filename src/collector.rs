@@ -34,8 +34,8 @@ impl Collector
         let mut empty_slots:usize= 0;
         let nref_node = batch_handle.get_nref();
         for slot in self.slots.iter() {
-            if let Some(val) = batch_iter.next() {
-                let add_result = unsafe {slot.add_to_slot(val)};
+            if let Some(mut val) = batch_iter.next() {
+                let add_result = unsafe {slot.add_to_slot(val.as_mut())};
                 match add_result {
                     Ok(val) => {
                         unsafe {

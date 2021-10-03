@@ -41,6 +41,7 @@ impl Node {
         self.nref_node = nref_node;
     }
 
+    //unsafe because its up to the caller to make sure the nref_node is valid
     pub(crate) unsafe fn fetch_add_nref(&self,val:usize,ordering:Ordering)->usize{
         self.nref_node.unwrap()
         .as_ref()
@@ -109,7 +110,7 @@ impl Node {
         }
     }
 
-    pub(crate) unsafe fn get_batch_ptr(&self)->*mut Batch {
+    pub(crate) fn get_batch_ptr(&self)->*mut Batch {
         self.nref_node
         .unwrap()
         .as_ptr()
