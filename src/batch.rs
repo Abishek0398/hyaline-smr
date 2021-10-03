@@ -16,7 +16,7 @@ unsafe impl Send for BatchHandle{}
 #[derive(Debug)]
 pub struct BatchHandle {
     batch: *mut Batch,
-    collector: *const Collector,
+    collector: *const Collector
 }
 
 impl BatchHandle {
@@ -24,20 +24,20 @@ impl BatchHandle {
         let res = Box::new(Batch::default());
         BatchHandle{
             batch:Box::into_raw(res),
-            collector: std::ptr::null()
+            collector: std::ptr::null(),
         }
     }
-    pub fn add_to_batch(collector:&Collector, val:Node) -> Result<(),BatchHandle> {
-        LOCAL_BATCH.with(|b|->Result<(),BatchHandle> {
+    pub fn add_to_batch(collector:&Collector, val:Node) {
+        LOCAL_BATCH.with(|b| {
             let mut handle = b.borrow_mut();
+            handle.set_collector(collector);
             let res = unsafe {
-                handle.set_collector(collector);
                 (*handle.batch).add(val)
             };
             if let Err(res_val) = res {
-                let ret_val = BatchHandle{
+                let _filled_handle = BatchHandle{
                     batch:handle.batch,
-                    collector:handle.collector
+                    collector:handle.collector,
                 };
 
                 handle.batch = Box::into_raw(Box::new(Batch::default()));
@@ -46,10 +46,6 @@ impl BatchHandle {
                     let _ = (*handle.batch).add(res_val)
                     .unwrap();
                 };
-                Err(ret_val)
-            }
-            else {
-                Ok(())
             }
         })
     }
@@ -58,6 +54,14 @@ impl BatchHandle {
         LOCAL_BATCH.with(|b|->bool {
             unsafe  {
                 (*b.borrow().batch).is_full()
+            }
+        })
+    }
+
+    fn get_size()->usize {
+        LOCAL_BATCH.with(|b|->usize {
+            unsafe  {
+                (*b.borrow().batch).get_size()
             }
         })
     }
@@ -138,6 +142,10 @@ impl Batch {
         }
         false
     }
+
+    fn get_size(&self) -> usize {
+       self.size
+    }
 }
 
 impl Default for Batch {
@@ -160,9 +168,9 @@ impl<'a> Iterator for Iter<'a> {
     type Item = NonNull<Node>;
     fn next(&mut self)->Option<Self::Item> {
         if self.len !=0 {
-            let mut res = self.current_node;
+            let res = self.current_node;
             let mut_res:&mut Node = unsafe {
-                res.as_mut().unwrap().as_mut()
+                res.unwrap().as_mut()
             };
             
             if self.len == 1 {
@@ -192,7 +200,6 @@ mod tests {
     use lazy_static::lazy_static;
 
     lazy_static! {
-        /// The global default garbage collector.
         static ref COLLECTOR: Collector = Collector::new();
     }
 
@@ -202,29 +209,22 @@ mod tests {
         }
         else {
             Node::new(Box::new("er"))
-        }
-        
+        }    
     }
 
     #[test]
-    fn iterator_test() {
+    fn basic_batch_test() {
         for i in 1..40 {
-            let handle = 
             BatchHandle::add_to_batch(&COLLECTOR,node_producer(i));
-            let _ = match handle{
-                Ok(_) => {
-                    let max_size:u32 = BATCH_SIZE.try_into().unwrap();
-                    if i%max_size != 0 {
-                        assert!(!BatchHandle::is_full());
-                    }
-                    else {
-                        assert!(BatchHandle::is_full());
-                    }
-                },
-                Err(handle) => {
-                    let _ = handle;
-                },
-            };
+            let act_i:usize = i.try_into().unwrap();
+            if act_i%BATCH_SIZE != 0 {
+                assert!(!BatchHandle::is_full());
+                assert!(BatchHandle::get_size() == act_i%BATCH_SIZE);
+            }
+            else {
+                assert!(BatchHandle::is_full());
+                assert!(BatchHandle::get_size() == BATCH_SIZE)
+            }
         }
     }
 }

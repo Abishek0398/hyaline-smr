@@ -23,17 +23,16 @@ impl HeadNode {
         }
     }
 
-    pub(crate)fn add_to_slot(&self, mut val:NonNull<Node>)->
+    pub(crate) unsafe fn add_to_slot(&self, mut val:NonNull<Node>)->
     Result<NonAtomicHeadNode,()> {
-        let mut curr_node = self.head.load(Ordering::Relaxed);
+        let mut curr_node = self.head.load(Ordering::SeqCst);
 
         loop {
             if curr_node.head_count == 0 {
+                val.as_mut().set_list(None);
                 return Err(());
             }
-            unsafe {
-                val.as_mut().set_list(curr_node.head_ptr);
-            };
+            val.as_mut().set_list(curr_node.head_ptr);
 
             let new_node = NonAtomicHeadNode {
                 head_ptr:Some(val),
@@ -42,8 +41,8 @@ impl HeadNode {
 
             let cxchg_result = self.head.compare_exchange(curr_node,
                 new_node,
-        Ordering::Relaxed,
-        Ordering::Relaxed
+        Ordering::SeqCst,
+        Ordering::SeqCst
             );
             match cxchg_result {
                 Ok(_) => {
@@ -54,8 +53,9 @@ impl HeadNode {
         }
     }
 
-    pub(crate)fn pin_slot(&self) {
-
+    pub(crate)fn pin_slot(&self)->Option<&'static Node> {
+        self.fetch_add(None,1,Ordering::SeqCst)
+       .get_guard_handle()
     }
 
     pub(crate) fn unpin_slot(&self,curr_head:NonAtomicHeadNode, local_guard:&Guard)->Result<Option<NonNull<Node>>,()> {
@@ -73,8 +73,8 @@ impl HeadNode {
         }
         match self.head.compare_exchange(curr_head
             ,cas_node
-            ,Ordering::Relaxed
-            ,Ordering::Relaxed
+            ,Ordering::SeqCst
+            ,Ordering::SeqCst
         ) {
             Ok(_) => Ok(traverse_node),
             Err(_) => Err(()),

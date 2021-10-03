@@ -1,10 +1,15 @@
+use rand::{Rng, thread_rng};
+
 use crate::headnode::{HeadNode, NonAtomicHeadNode};
 use crate::node::Node;
 use crate::guard::Guard;
 use crate::batch::BatchHandle;
+
 use std::sync::atomic::Ordering;
 
+
 const SLOTS_LENGTH:usize = 32;
+
 #[derive(Debug)]
 pub struct Collector {
     slots : [HeadNode;SLOTS_LENGTH],
@@ -21,7 +26,7 @@ impl Collector
     }
 
     fn get_slot() -> usize {
-        0
+        thread_rng().gen_range(0..SLOTS_LENGTH)
     }
 
     pub(crate) fn process_batch_handle(&self, batch_handle:&BatchHandle) {
@@ -30,7 +35,7 @@ impl Collector
         let nref_node = batch_handle.get_nref();
         for slot in self.slots.iter() {
             if let Some(val) = batch_iter.next() {
-                let add_result = slot.add_to_slot(val);
+                let add_result = unsafe {slot.add_to_slot(val)};
                 match add_result {
                     Ok(val) => {
                         unsafe {
@@ -59,15 +64,14 @@ impl Smr for Collector {
        result_guard.slot = Collector::get_slot();
        result_guard.handle = self
        .slots[result_guard.slot]
-       .fetch_add(None,1,Ordering::Relaxed)
-       .get_guard_handle();
+       .pin_slot();
        result_guard
    }
 
    fn unpin(&self,local_guard:&Guard) {
        let start = local_guard.slot;
        loop {
-           let curr_head:NonAtomicHeadNode = self.slots[start].load(Ordering::Relaxed);
+           let curr_head:NonAtomicHeadNode = self.slots[start].load(Ordering::SeqCst);
            let unpin_result = self.slots[start].unpin_slot(curr_head,local_guard);
            match unpin_result {
               Ok(traverse_node) => {
@@ -90,59 +94,56 @@ impl Smr for Collector {
 
    fn retire<T:'static>(&self,garbage : Box<T>) {
        let garb_node = Node::new(garbage);
-       let res = BatchHandle::add_to_batch(self,garb_node);
-       if let Err(_batch_handle) = res {
-       }
+       BatchHandle::add_to_batch(self,garb_node);
    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use std::{sync::atomic::{AtomicUsize,Ordering}, thread};
+    use lazy_static::lazy_static;
+
+    use crate::collector::{Collector, Smr};
+
+    const MAX_THREADS:usize = 8;
+    lazy_static! {
+        static ref COLLECTOR: Collector = Collector::new();
+        static ref DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+    }
 
     struct TestNode {
-        foo:i32,
-        bar:i32
+        foo:usize,
+        bar:usize
     }
+
     impl Drop for TestNode {
         fn drop(&mut self) {
-            println!("Testnode drop woo hoo : {}", self.foo);
+            DROP_COUNT.fetch_add(1, Ordering::Relaxed);
         }
     }
-    #[test]
-    fn collector_test() {
 
-        let first_garb = Box::new(TestNode{foo:1,bar:2});
-        let second_garb = Box::new(TestNode{foo:2,bar:2});
-        let third_garb = Box::new(TestNode{foo:3,bar:2});
-        let fourth_garb = Box::new(TestNode{foo:4,bar:2});
-        let five_garb = Box::new(TestNode{foo:5,bar:2});
-        let six_garb = Box::new(TestNode{foo:6,bar:2});
-
-        {
-            let _guard1 = crate::pin();
-            crate::retire(first_garb); 
-            crate::retire(second_garb);
+    fn node_producer(i:usize)->Box<TestNode> {
+        if i%2 == 0 {
+            Box::new(TestNode{foo:i,bar:i+1})
         }
+        else {
+            Box::new(TestNode{foo:0,bar:0})
+        }     
+    }
+    #[test]
+    fn count_drop() {
+        let mut handle_array = Vec::new();
 
-        let handle1 = thread::spawn(move|| {
-            {
-                let _guard2 = crate::pin();
-                crate::retire(third_garb); 
-                crate::retire(fourth_garb);
-            }
-        });
-
-        let handle2 = thread::spawn(move|| {
-            {
-                let _guard3 = crate::pin();
-                crate::retire(five_garb); 
-                crate::retire(six_garb);
-            }
-
-        });
-
-        handle2.join().unwrap();
-        handle1.join().unwrap();
+        for _i in 0..MAX_THREADS {
+            let handle = thread::spawn(move|| {
+                let _guard = COLLECTOR.pin();
+                for j in 0..5000 {   
+                    COLLECTOR.retire(node_producer(j));                 
+                }
+            });
+            handle_array.push(handle);
+        }
+        while DROP_COUNT.load(Ordering::Relaxed)<MAX_THREADS*5000 {}; 
+        assert_eq!(DROP_COUNT.load(Ordering::Relaxed),MAX_THREADS*5000);
     }
 }

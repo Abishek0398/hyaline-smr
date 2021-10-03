@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 atomicdouble = "0.1.3"
 lazy_static = "1.4.0"
+rand = "0.8.4"
 
 [dependencies.loom]
 version = "0.5"

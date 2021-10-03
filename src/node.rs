@@ -57,6 +57,11 @@ impl Node {
                     break;
                 },
             };
+            if let None = current.unwrap().as_ref().nref_node {
+                println!("HIIIIIIIIIIIIIIIIIIIIIIISDFJDFDJF");
+                let x = current.unwrap().as_ref();
+                let _y = x.get_batch_ptr();
+            }
             let prev_val = current.unwrap().as_ref()
             .nref_node.unwrap()
             .as_ref()
