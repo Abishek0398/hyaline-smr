@@ -29,6 +29,10 @@ impl Node {
         }
     }
 
+    pub(crate) fn get_list(&self)->Option<NonNull<Node>>{
+        self.list
+    }
+
     pub(crate) fn set_list(&mut self,list:Option<NonNull<Node>>) {
         self.list = list;
     }
@@ -50,19 +54,9 @@ impl Node {
     }
 
     pub(crate) unsafe fn traverse(&self, local_guard:&Guard) {
-        let mut current = self.list;
+        let mut current = Some(NonNull::from(self));
         loop {
-            match current {
-                Some(_) => {},
-                None => {
-                    break;
-                },
-            };
-            if let None = current.unwrap().as_ref().nref_node {
-                println!("HIIIIIIIIIIIIIIIIIIIIIIISDFJDFDJF");
-                let x = current.unwrap().as_ref();
-                let _y = x.get_batch_ptr();
-            }
+            let next = current.unwrap().as_ref().list;
             let prev_val = current.unwrap().as_ref()
             .nref_node.unwrap()
             .as_ref()
@@ -75,10 +69,10 @@ impl Node {
                 .unwrap()
                 .as_ptr());
             }
-            if local_guard.is_handle(current) == true {
+            if next.is_none() || local_guard.is_handle(current) == true {
                 break;
             }
-            current = current.unwrap().as_ref().list;
+            current = next;
         }
     }
 
