@@ -1,5 +1,5 @@
 [package]
-name = "gclf-hyaline"
+name = "hyaline-smr"
 version = "0.1.0"
 authors = ["abishek"]
 edition = "2018"

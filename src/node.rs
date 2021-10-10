@@ -9,7 +9,7 @@ the drops will happen through that link.
 */
 
 #[derive(Debug)]
-pub struct Node {
+pub(crate) struct Node {
     val: Deferred,
     list: Option<NonNull<Node>>,
     batch: Option<Box<Node>>,

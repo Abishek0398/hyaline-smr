@@ -7,7 +7,10 @@ use loom::sync::atomic::Ordering;
 use loom::sync::Arc;
 use loom::thread;
 
-use gclf_hyaline::collector::{Collector, Smr};
+use hyaline_smr::{
+    self as hyaline,
+    collector::{Collector, Smr},
+};
 
 use lazy_static::lazy_static;
 
@@ -44,27 +47,27 @@ fn collector_test() {
         let six_garb = Box::new(TestNode { foo: 6, bar: 2 });
 
         {
-            let _guard1 = loc_coll_1.pin();
+            let guard1 = loc_coll_1.pin();
             unsafe {
-                loc_coll_1.retire(NonNull::new(Box::into_raw(first_garb)));
-                loc_coll_1.retire(NonNull::new(Box::into_raw(second_garb)));
+                loc_coll_1.retire(NonNull::new(Box::into_raw(first_garb)), &guard1);
+                loc_coll_1.retire(NonNull::new(Box::into_raw(second_garb)), &guard1);
             }
         }
 
         thread::spawn(move || {
-            let _guard2 = loc_coll_2.pin();
+            let guard2 = loc_coll_2.pin();
             unsafe {
-                loc_coll_2.retire(NonNull::new(Box::into_raw(third_garb)));
-                loc_coll_2.retire(NonNull::new(Box::into_raw(fourth_garb)));
+                loc_coll_2.retire(NonNull::new(Box::into_raw(third_garb)), &guard2);
+                loc_coll_2.retire(NonNull::new(Box::into_raw(fourth_garb)), &guard2);
             }
             v1.store(1, Ordering::Release);
         });
 
         thread::spawn(move || {
-            let _guard3 = loc_coll_3.pin();
+            let guard3 = loc_coll_3.pin();
             unsafe {
-                loc_coll_3.retire(NonNull::new(Box::into_raw(five_garb)));
-                loc_coll_3.retire(NonNull::new(Box::into_raw(six_garb)));
+                loc_coll_3.retire(NonNull::new(Box::into_raw(five_garb)), &guard3);
+                loc_coll_3.retire(NonNull::new(Box::into_raw(six_garb)), &guard3);
             }
             v2.store(2, Ordering::Release);
         });
@@ -105,7 +108,7 @@ fn treiber_stack() {
                 next: AtomicPtr::default(),
             });
 
-            let _guard = gclf_hyaline::pin();
+            let _guard = hyaline::pin();
             let mut head = self.head.load(Ordering::Relaxed);
             let a_n = Box::into_raw(n);
             loop {
@@ -126,7 +129,7 @@ fn treiber_stack() {
         ///
         /// Returns `None` if the stack is empty.
         pub fn pop(&self) -> Option<T> {
-            let _guard = gclf_hyaline::pin();
+            let guard = hyaline_smr::pin();
             loop {
                 let head = self.head.load(Ordering::Acquire);
 
@@ -140,7 +143,7 @@ fn treiber_stack() {
                             .is_ok()
                         {
                             unsafe {
-                                gclf_hyaline::retire(NonNull::new(head));
+                                hyaline::retire(NonNull::new(head), &guard);
                                 return Some(ManuallyDrop::into_inner(ptr::read(&(*h).data)));
                             }
                         }
@@ -152,7 +155,7 @@ fn treiber_stack() {
 
         /// Returns `true` if the stack is empty.
         pub fn is_empty(&self) -> bool {
-            let _guard = gclf_hyaline::pin();
+            let _guard = hyaline::pin();
             self.head.load(Ordering::Acquire).is_null()
         }
     }

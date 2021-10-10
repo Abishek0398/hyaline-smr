@@ -1,3 +1,25 @@
+/// Garbage collector that implements Hyaline algorithm
+///
+/// # Examples
+///
+/// ```
+/// use hyaline::Collector;
+///
+/// let collector = Collector::new();
+///
+/// collector.pin();
+///
+/// // This line is just an example.
+/// let del_node:Option<NonNull<Node>> = lock_free_ds.get_some();
+///
+/// unsafe {
+///     collector.retire(del_node);
+/// }
+/// /*
+/// perform other operations on the lock free data structure
+///  */
+///
+/// ```
 use rand::{thread_rng, Rng};
 
 use crate::batch::BatchHandle;
@@ -10,6 +32,9 @@ use std::sync::atomic::Ordering;
 
 const SLOTS_LENGTH: usize = 32;
 
+/// Garbage collector that implements Hyaline algorithm
+///
+/// Number of slots is fixed at present with 32 slots
 #[derive(Debug)]
 pub struct Collector {
     slots: [HeadNode; SLOTS_LENGTH],
@@ -17,6 +42,11 @@ pub struct Collector {
 }
 
 impl Collector {
+    /// Creates a new collector with default configurations.
+    ///
+    /// It is absolutely essential for the collector obtained here to live longer than
+    /// all the threads that use it. Preferrably use this function to initialize a collector in static scope
+    /// or if possible use scoped threads.
     pub fn new() -> Self {
         Collector {
             slots: Default::default(),
@@ -56,11 +86,31 @@ impl Default for Collector {
         Collector::new()
     }
 }
+
+/// Safe Memory Reclaimation(SMR) trait defines the methods that a collector must implement
+/// and expose to the end user. The methods defined here are standard APIs in the lockfree
+/// garbage collector world. These APIs are also used in other SMR schemes like epoch based garbage collector
 pub trait Smr {
+    /// Registers a thread to the garbage collector. Any operation to a
+    /// lock free data structure needs to be performed with a guard in scope.(i.e, Before any operation call the hyaline::pin() method)
+    /// This method returna a guard, which takes care of unpining the thread when the guard goes out of scope.
+    /// Exact details on what constitutes a register is implementation dependent
     fn pin(&self) -> Guard;
+
+    /// This is the opposite of pin method. Upon calling this method the thread will be de-registered.
+    /// Most implementations dont expose this method to the end user as it it will be put behind a RAII guard.
     fn unpin(&self, local_guard: &Guard);
-    unsafe fn retire<T>(&self, garbage: Option<NonNull<T>>);
+
+    /// Collects the garbage values form the user. The local_guard argument is just here
+    /// for ensuring that retire() is called after a pin().
+    ///
+    /// # Safety
+    /// Caller must ensure that only logically deleted values of the concerned data structure is
+    /// provided to the retire method. For example: In a lock-free linkedlist retire() needs to be called
+    /// only after the concerned node is removed form the list.
+    unsafe fn retire<T>(&self, garbage: Option<NonNull<T>>, _local_guard: &Guard);
 }
+
 impl Smr for Collector {
     fn pin(&self) -> Guard<'_> {
         let mut result_guard = Guard::new(self);
@@ -90,7 +140,7 @@ impl Smr for Collector {
         }
     }
 
-    unsafe fn retire<T>(&self, garbage: Option<NonNull<T>>) {
+    unsafe fn retire<T>(&self, garbage: Option<NonNull<T>>, _local_guard: &Guard) {
         if let Some(garb) = garbage {
             let garb_node = Node::new(Box::from_raw(garb.as_ptr()));
             BatchHandle::add_to_batch(self, garb_node);
@@ -141,10 +191,10 @@ mod tests {
 
         for _i in 0..MAX_THREADS {
             let handle = thread::spawn(move || {
-                let _guard = COLLECTOR.pin();
+                let guard = COLLECTOR.pin();
                 for j in 0..5000 {
                     unsafe {
-                        COLLECTOR.retire(node_producer(j));
+                        COLLECTOR.retire(node_producer(j), &guard);
                     }
                 }
             });

@@ -16,7 +16,7 @@ const BATCH_SIZE: usize = 64;
 unsafe impl Send for BatchHandle {}
 
 #[derive(Debug)]
-pub struct BatchHandle {
+pub(crate) struct BatchHandle {
     batch: *mut Batch,
     collector: *const Collector,
 }
@@ -95,7 +95,7 @@ impl Drop for BatchHandle {
         }
     }
 }
-pub struct Batch {
+pub(crate) struct Batch {
     first_node: Option<Box<Node>>,
     size: usize,
     nref: AtomicUsize,
@@ -165,7 +165,7 @@ impl Default for Batch {
     }
 }
 
-pub struct Iter<'a> {
+pub(crate) struct Iter<'a> {
     current_node: Option<NonNull<Node>>,
     len: usize,
     marker: PhantomData<&'a Node>,

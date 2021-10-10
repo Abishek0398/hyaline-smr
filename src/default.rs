@@ -17,11 +17,16 @@ pub fn pin() -> Guard<'static> {
     COLLECTOR.pin()
 }
 
-///Retires a node from the data structure.
-///No new threads should be able to access the retired node after retiring
+/// Collects the garbage values form the user. The local_guard argument is just here
+/// for ensuring that retire() is called after a pin().
+///
+/// # Safety
+/// Caller must ensure that only logically deleted values of the concerned data structure is
+/// provided to the retire method. For example: In a lock-free linkedlist retire() needs to be called
+/// only after the concerned node is removed form the list.
 #[inline]
-pub unsafe fn retire<T>(garbage: Option<NonNull<T>>) {
-    COLLECTOR.retire(garbage);
+pub unsafe fn retire<T>(garbage: Option<NonNull<T>>, local_guard: &Guard) {
+    COLLECTOR.retire(garbage, local_guard);
 }
 
 /// Returns the default global collector.

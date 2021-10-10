@@ -1,10 +1,11 @@
 #![allow(dead_code)]
+#![warn(missing_docs)]
 
-pub mod default;
+mod default;
 pub use self::default::{default_collector, pin, retire};
-pub mod batch;
+pub(crate) mod batch;
 pub mod collector;
-pub mod deferred;
+pub(crate) mod deferred;
 pub mod guard;
-pub mod headnode;
-pub mod node;
+pub(crate) mod headnode;
+pub(crate) mod node;
