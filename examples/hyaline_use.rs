@@ -1,5 +1,6 @@
-use std::sync::atomic::{AtomicPtr, AtomicUsize};
+use std::ptr::NonNull;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
+use std::sync::atomic::{AtomicPtr, AtomicUsize};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -31,21 +32,19 @@ fn worker(a: Arc<AtomicPtr<AtomicUsize>>) -> usize {
                 let t = Box::new(AtomicUsize::new(sum));
                 let p = a.swap(Box::into_raw(t), AcqRel);
                 unsafe {
-                    COLLECTOR.retire(Box::from_raw(p));
+                    COLLECTOR.retire(NonNull::new(p));
                     if let Some(act_p) = p.as_ref() {
                         act_p.load(Relaxed)
-                    }
-                    else {
+                    } else {
                         0
                     }
-                }   
+                }
             } else {
                 let p = a.load(Acquire);
                 unsafe {
                     if let Some(act_p) = p.as_ref() {
-                        act_p.fetch_add(sum,Relaxed)
-                    }
-                    else {
+                        act_p.fetch_add(sum, Relaxed)
+                    } else {
                         0
                     }
                 }
@@ -73,7 +72,7 @@ fn main() {
             t.join().unwrap();
         }
         let new_temp = Box::new(AtomicUsize::new(777));
-        
+
         a.swap(Box::into_raw(new_temp), AcqRel);
     }
 }

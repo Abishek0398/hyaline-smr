@@ -1,5 +1,7 @@
 //! The default garbage collector.
 
+use std::ptr::NonNull;
+
 use crate::collector::{Collector, Smr};
 use crate::guard::Guard;
 use lazy_static::lazy_static;
@@ -15,13 +17,12 @@ pub fn pin() -> Guard<'static> {
     COLLECTOR.pin()
 }
 
-///Retires a node from the data structure. 
+///Retires a node from the data structure.
 ///No new threads should be able to access the retired node after retiring
 #[inline]
-pub fn retire<T:'static>(garbage:Box<T>) {
+pub unsafe fn retire<T>(garbage: Option<NonNull<T>>) {
     COLLECTOR.retire(garbage);
 }
-
 
 /// Returns the default global collector.
 pub fn default_collector() -> &'static Collector {
@@ -32,7 +33,6 @@ pub fn default_collector() -> &'static Collector {
 mod tests {
     use std::thread;
 
-    
     #[test]
     fn pin_while_exiting() {
         struct Foo;

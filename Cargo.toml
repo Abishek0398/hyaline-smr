@@ -12,8 +12,3 @@ rand = "0.8.4"
 [dependencies.loom]
 version = "0.5"
 features = ["checkpoint"]
-
-[dependencies.educe]
-version = "0.4.18"
-features = ["Debug"]
-default-features = false
