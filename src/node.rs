@@ -1,6 +1,7 @@
-use crate::{batch::Batch, deferred::Deferred, guard::Guard};
-use std::sync::atomic::Ordering;
 use std::{mem, ptr::NonNull};
+
+use crate::primitive::sync::atomic::Ordering;
+use crate::{batch::Batch, deferred::Deferred, guard::Guard};
 
 /*
 This is the type that will be used in local batches and retirement lists.
@@ -54,7 +55,7 @@ impl Node {
             .fetch_add_nref(val, ordering)
     }
 
-    pub(crate) unsafe fn traverse(&self, local_guard: &Guard) {
+    pub(crate) unsafe fn traverse(&self, local_guard: &Guard<'_>) {
         let mut current = Some(NonNull::from(self));
         loop {
             let next = current.unwrap().as_ref().list;
@@ -121,14 +122,5 @@ impl Drop for Node {
         let no_op = Deferred::new(no_op_func);
         let owned_deferred = mem::replace(&mut self.val, no_op);
         owned_deferred.call();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::node::Node;
-    #[test]
-    fn create_drop_test() {
-        let _y = Node::new(Box::new(5));
     }
 }

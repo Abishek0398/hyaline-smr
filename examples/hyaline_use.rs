@@ -5,14 +5,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use hyaline_smr::collector::{Collector, Smr};
-use lazy_static::lazy_static;
+use hyaline_smr as hyaline;
 
 use rand::Rng;
-
-lazy_static! {
-    static ref COLLECTOR: Collector = Collector::new();
-}
 
 fn worker(a: Arc<AtomicPtr<AtomicUsize>>) -> usize {
     let mut rng = rand::thread_rng();
@@ -26,13 +21,13 @@ fn worker(a: Arc<AtomicPtr<AtomicUsize>>) -> usize {
 
     while now.elapsed() < timeout {
         for _ in 0..100 {
-            let guard = COLLECTOR.pin();
+            let guard = hyaline::pin();
 
             let val = if rng.gen() {
                 let t = Box::new(AtomicUsize::new(sum));
                 let p = a.swap(Box::into_raw(t), AcqRel);
                 unsafe {
-                    COLLECTOR.retire(NonNull::new(p), &guard);
+                    hyaline::retire(NonNull::new(p), &guard);
                     if let Some(act_p) = p.as_ref() {
                         act_p.load(Relaxed)
                     } else {

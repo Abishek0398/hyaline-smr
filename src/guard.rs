@@ -11,14 +11,17 @@ use crate::node::Node;
 /// Pinning is reentrant and it is perfectly legal to create multiple guards. But it is not advised
 /// to have a gurad while another guard is still active for a thread. This leads to unnecessary
 /// pinning of the thread again.
-/// ```
-/// use hyaline;
+/// ```ignore
+/// use hyaline_smr as hyaline;
 ///
 /// let guard1 = hyaline::pin();
 /// // This kind of usage is not advised as it incurs some performance penalty
 /// let guard2 = hyaline::pin();
 ///
 /// hyaline::retire(some_val);
+///
+/// ```
+#[derive(Debug)]
 pub struct Guard<'a> {
     active_collector: &'a Collector,
     pub(crate) handle: Option<&'a Node>,

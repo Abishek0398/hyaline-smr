@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 
 use crate::collector::{Collector, Smr};
 use crate::guard::Guard;
-use lazy_static::lazy_static;
+use crate::primitive::lazy_static;
 
 lazy_static! {
     /// The global default garbage collector.
@@ -25,7 +25,7 @@ pub fn pin() -> Guard<'static> {
 /// provided to the retire method. For example: In a lock-free linkedlist retire() needs to be called
 /// only after the concerned node is removed form the list.
 #[inline]
-pub unsafe fn retire<T>(garbage: Option<NonNull<T>>, local_guard: &Guard) {
+pub unsafe fn retire<T>(garbage: Option<NonNull<T>>, local_guard: &Guard<'_>) {
     COLLECTOR.retire(garbage, local_guard);
 }
 

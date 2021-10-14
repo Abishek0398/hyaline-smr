@@ -1,11 +1,11 @@
 use std::cell::RefCell;
-use std::sync::atomic::AtomicUsize;
 use std::{marker::PhantomData, ptr::NonNull};
-
-use atomicdouble::Ordering;
 
 use crate::collector::Collector;
 use crate::node::Node;
+
+use crate::primitive::sync::atomic::{AtomicUsize, Ordering};
+use crate::primitive::thread_local;
 
 thread_local! {
     static LOCAL_BATCH:RefCell<BatchHandle> = RefCell::new(BatchHandle::new());
@@ -29,7 +29,7 @@ impl BatchHandle {
             collector: std::ptr::null(),
         }
     }
-    pub fn add_to_batch(collector: &Collector, val: Node) {
+    pub(crate) fn add_to_batch(collector: &Collector, val: Node) {
         LOCAL_BATCH.with(|b| {
             let mut handle = b.borrow_mut();
             handle.set_collector(collector);
@@ -63,7 +63,7 @@ impl BatchHandle {
         LOCAL_BATCH.with(|b| -> Iter<'_> { unsafe { (*b.borrow().batch).iter() } })
     }
 
-    pub fn get_node_nref(&self) -> Option<NonNull<Node>> {
+    pub(crate) fn get_node_nref(&self) -> Option<NonNull<Node>> {
         let handle = unsafe { &*self.batch };
 
         handle
@@ -72,7 +72,7 @@ impl BatchHandle {
             .map(|input| NonNull::from(input.as_ref()))
     }
 
-    pub fn iter(&self) -> Iter<'_> {
+    pub(crate) fn iter(&self) -> Iter<'_> {
         unsafe { (*self.batch).iter() }
     }
 
@@ -192,7 +192,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
 
     use crate::{collector::Collector, node::Node};

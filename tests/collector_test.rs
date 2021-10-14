@@ -1,15 +1,13 @@
+#![cfg(loom)]
 use std::ptr;
 use std::{mem::ManuallyDrop, ptr::NonNull};
 
-use loom::sync::atomic::AtomicPtr;
-use loom::sync::atomic::AtomicUsize;
-use loom::sync::atomic::Ordering;
+use loom::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use loom::sync::Arc;
 use loom::thread;
 
 use hyaline_smr::{
-    self as hyaline,
-    collector::{Collector, Smr},
+    self as hyaline, {Collector, Smr},
 };
 
 use lazy_static::lazy_static;

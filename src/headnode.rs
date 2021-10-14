@@ -65,7 +65,7 @@ impl HeadNode {
     pub(crate) fn unpin_slot(
         &self,
         curr_head: NonAtomicHeadNode,
-        local_guard: &Guard,
+        local_guard: &Guard<'_>,
     ) -> Result<Option<NonNull<Node>>, ()> {
         let mut traverse_node = None;
         let cas_node = {
@@ -115,8 +115,8 @@ impl Default for HeadNode {
 
 #[derive(Debug)]
 pub(crate) struct NonAtomicHeadNode {
-    pub head_ptr: Option<NonNull<Node>>,
-    pub head_count: usize,
+    pub(crate) head_ptr: Option<NonNull<Node>>,
+    pub(crate) head_count: usize,
 }
 
 /*
@@ -143,14 +143,14 @@ impl Default for NonAtomicHeadNode {
 }
 
 impl NonAtomicHeadNode {
-    pub fn new(ptr: Option<NonNull<Node>>, cnt: usize) -> Self {
+    pub(crate) fn new(ptr: Option<NonNull<Node>>, cnt: usize) -> Self {
         NonAtomicHeadNode {
             head_ptr: ptr,
             head_count: cnt,
         }
     }
 
-    pub unsafe fn get_guard_handle(self) -> Option<&'static Node> {
+    pub(crate) unsafe fn get_guard_handle(self) -> Option<&'static Node> {
         self.head_ptr.map(|val| -> &Node { val.as_ref() })
     }
 }
