@@ -23,7 +23,7 @@ impl HeadNode {
     }
 
     pub(crate) fn add_to_slot(&self, val: &mut Node) -> Result<(), ()> {
-        let mut curr_node = self.head.load(Ordering::Relaxed);
+        let mut curr_node = self.head.load(Ordering::Acquire);
         loop {
             if curr_node.head_count == 0 {
                 val.set_list(None);
@@ -41,7 +41,7 @@ impl HeadNode {
             let cxchg_result = self.head.compare_exchange(
                 curr_node,
                 new_node,
-                Ordering::Release,
+                Ordering::AcqRel,
                 Ordering::Relaxed,
             );
             match cxchg_result {
@@ -60,13 +60,12 @@ impl HeadNode {
         unsafe {
             // Safe because the headptr obtained from NonAtomicHeadNode returned
             // from fetchadd is either valid(The algorithm ensures this) or None
-            self.fetch_add(None, 1, Ordering::Relaxed)
-                .get_guard_handle()
+            self.fetch_add(None, 1, Ordering::AcqRel).get_guard_handle()
         }
     }
 
     pub(crate) fn unpin_slot(&self, local_guard: &Guard<'_>) {
-        let mut curr_head: NonAtomicHeadNode = self.head.load(Ordering::Relaxed);
+        let mut curr_head: NonAtomicHeadNode = self.head.load(Ordering::Acquire);
         loop {
             let mut traverse_node = None;
             let cas_node = {
@@ -85,7 +84,7 @@ impl HeadNode {
             match self.head.compare_exchange(
                 curr_head,
                 cas_node,
-                Ordering::Relaxed,
+                Ordering::AcqRel,
                 Ordering::Relaxed,
             ) {
                 Ok(_) => {

@@ -184,6 +184,5 @@ fn treiber_stack() {
         jh.join().unwrap();
         assert!(stack1.pop().is_none());
         assert!(stack1.is_empty());
-        //println!("HI");
     });
 }

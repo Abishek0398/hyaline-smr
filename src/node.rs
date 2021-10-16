@@ -65,7 +65,7 @@ impl Node {
                 .nref_node
                 .unwrap()
                 .as_ref()
-                .fetch_sub_nref(1, Ordering::Relaxed);
+                .fetch_sub_nref(1, Ordering::AcqRel);
             if prev_val.wrapping_sub(1) == 0 {
                 let _ = Box::from_raw(current.unwrap().as_ref().nref_node.unwrap().as_ptr());
             }
@@ -78,7 +78,7 @@ impl Node {
 
     pub(crate) unsafe fn add_adjs(node: Option<NonNull<Node>>, val: usize) {
         if let Some(node_val) = node {
-            let prev_val = node_val.as_ref().fetch_add_nref(val, Ordering::Relaxed);
+            let prev_val = node_val.as_ref().fetch_add_nref(val, Ordering::AcqRel);
             if prev_val.wrapping_add(val) == 0 {
                 let _ = Box::from_raw(node_val.as_ref().get_batch_ptr());
             }
