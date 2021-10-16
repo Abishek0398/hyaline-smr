@@ -50,7 +50,7 @@ impl Collector {
         }
         if empty_slots > 0 {
             unsafe {
-                Node::add_adjs(node_nref, empty_slots.wrapping_mul(ADJS));
+                Node::add_to_nref(node_nref, empty_slots.wrapping_mul(ADJS));
             };
         }
     }

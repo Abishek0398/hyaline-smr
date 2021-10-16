@@ -58,30 +58,20 @@ impl Node {
     pub(crate) unsafe fn traverse(&self, local_guard: &Guard<'_>) {
         let mut current = Some(NonNull::from(self));
         loop {
-            let next = current.unwrap().as_ref().list;
-            let prev_val = current
-                .unwrap()
-                .as_ref()
+            let current_ref = current.unwrap().as_ref();
+            let next = current_ref.list;
+            let prev_val = current_ref
                 .nref_node
                 .unwrap()
                 .as_ref()
                 .fetch_sub_nref(1, Ordering::AcqRel);
             if prev_val.wrapping_sub(1) == 0 {
-                let _ = Box::from_raw(current.unwrap().as_ref().nref_node.unwrap().as_ptr());
+                let _ = Box::from_raw(current_ref.nref_node.unwrap().as_ptr());
             }
             if next.is_none() || local_guard.is_handle(current) {
                 break;
             }
             current = next;
-        }
-    }
-
-    pub(crate) unsafe fn add_adjs(node: Option<NonNull<Node>>, val: usize) {
-        if let Some(node_val) = node {
-            let prev_val = node_val.as_ref().fetch_add_nref(val, Ordering::AcqRel);
-            if prev_val.wrapping_add(val) == 0 {
-                let _ = Box::from_raw(node_val.as_ref().get_batch_ptr());
-            }
         }
     }
 
@@ -101,6 +91,15 @@ impl Node {
 
     pub(crate) fn get_batch_ptr(&self) -> *mut Batch {
         self.nref_node.unwrap().as_ptr()
+    }
+
+    pub(crate) unsafe fn add_to_nref(node: Option<NonNull<Node>>, val: usize) {
+        if let Some(node_val) = node {
+            let prev_val = node_val.as_ref().fetch_add_nref(val, Ordering::AcqRel);
+            if prev_val.wrapping_add(val) == 0 {
+                let _ = Box::from_raw(node_val.as_ref().get_batch_ptr());
+            }
+        }
     }
 }
 

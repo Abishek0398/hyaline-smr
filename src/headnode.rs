@@ -47,7 +47,7 @@ impl HeadNode {
             match cxchg_result {
                 Ok(_) => {
                     unsafe {
-                        Node::add_adjs(curr_node.head_ptr, curr_node.head_count + ADJS);
+                        Node::add_to_nref(curr_node.head_ptr, curr_node.head_count + ADJS);
                     };
                     return Ok(());
                 }
@@ -90,7 +90,7 @@ impl HeadNode {
                 Ok(_) => {
                     if curr_head.head_count == 1 && curr_head.head_ptr != None {
                         unsafe {
-                            Node::add_adjs(curr_head.head_ptr, ADJS);
+                            Node::add_to_nref(curr_head.head_ptr, ADJS);
                         };
                     }
                     if let Some(act_traverse_node) = traverse_node {
@@ -131,7 +131,7 @@ struct NonAtomicHeadNode {
 }
 
 /*
-Grossly unsafe but our implementation guarantees that there is no data race
+Unsafe but our implementation guarantees that there is no data race
 or UB of any kind when sending this type
 */
 unsafe impl Send for NonAtomicHeadNode {}
@@ -161,7 +161,7 @@ impl NonAtomicHeadNode {
         }
     }
 
-    pub(crate) unsafe fn get_guard_handle(self) -> Option<&'static Node> {
+    pub(crate) unsafe fn get_guard_handle<'a>(self) -> Option<&'a Node> {
         self.head_ptr.map(|val| -> &Node { val.as_ref() })
     }
 }
