@@ -8,7 +8,7 @@ documentation = "https://docs.rs/hyaline_smr"
 license = "Apache-2.0/MIT"
 repository = "https://github.com/Abishek0398/hyaline-smr.git"
 readme = "README.md"
-keywords = ["safe-memory-reclamation","lock-free-garbage-collector","hyaline",]
+keywords = ["safe-memory-reclamation","lock-free-garbage-collector","hyaline"]
 
 [dependencies]
 atomicdouble = "0.1.3"

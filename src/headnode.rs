@@ -3,6 +3,7 @@ use std::ptr::NonNull;
 use atomicdouble::AtomicDouble;
 use atomicdouble::Ordering;
 
+use crate::collector::ADJS;
 use crate::guard::Guard;
 use crate::node::Node;
 
@@ -21,9 +22,8 @@ impl HeadNode {
         }
     }
 
-    pub(crate) fn add_to_slot(&self, val: &mut Node) -> Result<NonAtomicHeadNode, ()> {
+    pub(crate) fn add_to_slot(&self, val: &mut Node) -> Result<(), ()> {
         let mut curr_node = self.head.load(Ordering::Relaxed);
-
         loop {
             if curr_node.head_count == 0 {
                 val.set_list(None);
@@ -46,9 +46,12 @@ impl HeadNode {
             );
             match cxchg_result {
                 Ok(_) => {
-                    return Ok(curr_node);
+                    unsafe {
+                        Node::add_adjs(curr_node.head_ptr, curr_node.head_count + ADJS);
+                    };
+                    return Ok(());
                 }
-                Err(node) => curr_node = node,
+                Err(pres_node) => curr_node = pres_node,
             };
         }
     }
@@ -62,39 +65,48 @@ impl HeadNode {
         }
     }
 
-    pub(crate) fn unpin_slot(
-        &self,
-        curr_head: NonAtomicHeadNode,
-        local_guard: &Guard<'_>,
-    ) -> Result<Option<NonNull<Node>>, ()> {
-        let mut traverse_node = None;
-        let cas_node = {
-            if curr_head.head_count == 1 {
-                NonAtomicHeadNode::new(None, 0)
-            } else {
-                NonAtomicHeadNode::new(curr_head.head_ptr, curr_head.head_count.wrapping_sub(1))
+    pub(crate) fn unpin_slot(&self, local_guard: &Guard<'_>) {
+        let mut curr_head: NonAtomicHeadNode = self.head.load(Ordering::Relaxed);
+        loop {
+            let mut traverse_node = None;
+            let cas_node = {
+                if curr_head.head_count == 1 {
+                    NonAtomicHeadNode::new(None, 0)
+                } else {
+                    NonAtomicHeadNode::new(curr_head.head_ptr, curr_head.head_count.wrapping_sub(1))
+                }
+            };
+
+            if !local_guard.is_handle(curr_head.head_ptr) {
+                traverse_node = curr_head
+                    .head_ptr
+                    .and_then(|val| unsafe { val.as_ref().get_list() });
             }
-        };
-
-        if !local_guard.is_handle(curr_head.head_ptr) {
-            traverse_node = curr_head
-                .head_ptr
-                .and_then(|val| unsafe { val.as_ref().get_list() });
-        }
-        match self
-            .head
-            .compare_exchange(curr_head, cas_node, Ordering::Relaxed, Ordering::Relaxed)
-        {
-            Ok(_) => Ok(traverse_node),
-            Err(_) => Err(()),
+            match self.head.compare_exchange(
+                curr_head,
+                cas_node,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    if curr_head.head_count == 1 && curr_head.head_ptr != None {
+                        unsafe {
+                            Node::add_adjs(curr_head.head_ptr, ADJS);
+                        };
+                    }
+                    if let Some(act_traverse_node) = traverse_node {
+                        unsafe {
+                            act_traverse_node.as_ref().traverse(local_guard);
+                        };
+                    }
+                    break;
+                }
+                Err(pres_head) => curr_head = pres_head,
+            }
         }
     }
 
-    pub(crate) fn load(&self, order: Ordering) -> NonAtomicHeadNode {
-        self.head.load(order)
-    }
-
-    pub(crate) fn fetch_add(
+    fn fetch_add(
         &self,
         head_ptr: Option<NonNull<Node>>,
         head_cnt: usize,
@@ -114,9 +126,9 @@ impl Default for HeadNode {
 }
 
 #[derive(Debug)]
-pub(crate) struct NonAtomicHeadNode {
-    pub(crate) head_ptr: Option<NonNull<Node>>,
-    pub(crate) head_count: usize,
+struct NonAtomicHeadNode {
+    head_ptr: Option<NonNull<Node>>,
+    head_count: usize,
 }
 
 /*

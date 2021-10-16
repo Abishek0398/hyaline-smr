@@ -2,20 +2,20 @@ use std::ptr::NonNull;
 
 use crate::batch::BatchHandle;
 use crate::guard::Guard;
-use crate::headnode::{HeadNode, NonAtomicHeadNode};
+use crate::headnode::HeadNode;
 use crate::node::Node;
 
-use crate::primitive::sync::atomic::Ordering;
 use crate::primitive::thread;
 
 const SLOTS_LENGTH: usize = 32;
+
+pub(crate) const ADJS: usize = (usize::MAX / SLOTS_LENGTH).wrapping_add(1);
 
 /// Garbage collector that implements Hyaline algorithm
 /// Number of slots is fixed at present with 32 slots
 #[derive(Debug)]
 pub struct Collector {
     slots: [HeadNode; SLOTS_LENGTH],
-    adjs: usize,
 }
 
 impl Collector {
@@ -27,7 +27,6 @@ impl Collector {
     pub fn new() -> Self {
         Collector {
             slots: Default::default(),
-            adjs: (usize::MAX / SLOTS_LENGTH).wrapping_add(1),
         }
     }
 
@@ -39,21 +38,19 @@ impl Collector {
     pub(crate) fn process_batch_handle(&self, batch_handle: &mut BatchHandle) {
         let mut batch_iter = batch_handle.iter();
         let mut empty_slots: usize = 0;
-        let nref_node = batch_handle.get_node_nref();
+        let node_nref = batch_handle.get_node_nref();
         for slot in self.slots.iter() {
             if let Some(mut val) = batch_iter.next() {
                 let add_result = unsafe { slot.add_to_slot(val.as_mut()) };
                 match add_result {
-                    Ok(val) => unsafe {
-                        Node::add_adjs(val.head_ptr, val.head_count + self.adjs);
-                    },
+                    Ok(_) => {}
                     Err(_) => empty_slots += 1,
                 }
             }
         }
         if empty_slots > 0 {
             unsafe {
-                Node::add_adjs(nref_node, empty_slots.wrapping_mul(self.adjs));
+                Node::add_adjs(node_nref, empty_slots.wrapping_mul(ADJS));
             };
         }
     }
@@ -99,23 +96,7 @@ impl Smr for Collector {
 
     fn unpin(&self, local_guard: &Guard<'_>) {
         let start = local_guard.slot;
-        loop {
-            let curr_head: NonAtomicHeadNode = self.slots[start].load(Ordering::Relaxed);
-            let unpin_result = self.slots[start].unpin_slot(curr_head, local_guard);
-            if let Ok(traverse_node) = unpin_result {
-                if curr_head.head_count == 1 && curr_head.head_ptr != None {
-                    unsafe {
-                        Node::add_adjs(curr_head.head_ptr, self.adjs);
-                    };
-                }
-                if let Some(act_traverse_node) = traverse_node {
-                    unsafe {
-                        act_traverse_node.as_ref().traverse(local_guard);
-                    };
-                }
-                break;
-            }
-        }
+        self.slots[start].unpin_slot(local_guard);
     }
 
     unsafe fn retire<T>(&self, garbage: Option<NonNull<T>>, _local_guard: &Guard<'_>) {
