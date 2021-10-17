@@ -34,7 +34,7 @@ pub fn default_collector() -> &'static Collector {
     &COLLECTOR
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use std::thread;
 

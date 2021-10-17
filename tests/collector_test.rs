@@ -1,3 +1,8 @@
+/*
+   These tests serve very little purpose for now as the atomicdouble type is a
+   custom atomic type and loom doesnt support it. These are here jst to test out loom's
+   features and maybe test some permutations using loom::thread
+*/
 #![cfg(loom)]
 use std::ptr;
 use std::{mem::ManuallyDrop, ptr::NonNull};
