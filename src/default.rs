@@ -4,12 +4,9 @@ use std::ptr::NonNull;
 
 use crate::collector::{Collector, Smr};
 use crate::guard::Guard;
-use crate::primitive::lazy_static;
 
-lazy_static! {
-    /// The global default garbage collector.
-    static ref COLLECTOR: Collector = Collector::new();
-}
+/// The global default garbage collector.
+static COLLECTOR: Collector = Collector::new();
 
 /// Pins the current thread.
 #[inline]

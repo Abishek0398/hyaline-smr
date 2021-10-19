@@ -13,7 +13,7 @@ categories = ["concurrency", "memory-management"]
 
 [dependencies]
 atomicdouble = "0.1.4"
-lazy_static = "1.4.0"
+
 [target.'cfg(loom)'.dependencies.loom]
 version = "0.5"
 features = ["checkpoint"]

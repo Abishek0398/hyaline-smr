@@ -16,11 +16,7 @@ use hyaline_smr::{
     self as hyaline, {Collector, Smr},
 };
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    static ref DROP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-}
+static DROP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct TestNode {
     foo: i32,

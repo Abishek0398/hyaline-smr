@@ -7,7 +7,7 @@ use crate::node::Node;
 
 use crate::primitive::thread;
 
-const SLOTS_LENGTH: usize = 32;
+const SLOTS_LENGTH: usize = 64;
 
 pub(crate) const ADJS: usize = (usize::MAX / SLOTS_LENGTH).wrapping_add(1);
 
@@ -24,9 +24,75 @@ impl Collector {
     /// It is absolutely essential for the collector obtained here to live longer than
     /// all the threads that use it. Preferrably use this function to initialize a collector in static scope
     /// or if possible use scoped threads.
-    pub fn new() -> Self {
+    #[rustfmt::skip]
+    pub const fn new() -> Self {
         Collector {
-            slots: Default::default(),
+            slots: [
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                HeadNode::new(None, 0),
+                ],
         }
     }
 
@@ -109,20 +175,17 @@ impl Smr for Collector {
 
 #[cfg(all(test, not(loom)))]
 mod tests {
-    use lazy_static::lazy_static;
     use std::{
         ptr::NonNull,
         sync::atomic::{AtomicUsize, Ordering},
         thread,
     };
 
-    use crate::collector::{Collector, Smr};
+    use crate::{Collector, Smr};
 
     const MAX_THREADS: usize = 8;
-    lazy_static! {
-        static ref COLLECTOR: Collector = Collector::new();
-        static ref DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
-    }
+    static COLLECTOR: Collector = Collector::new();
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     struct TestNode {
         foo: usize,

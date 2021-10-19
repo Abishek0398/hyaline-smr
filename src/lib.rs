@@ -47,7 +47,6 @@
 //! The following is a completely synthetic example.
 //! ```
 //! use hyaline_smr as hyaline;
-//! use lazy_static::lazy_static;
 //! use std::{
 //!     ptr::NonNull,
 //!     sync::atomic::{AtomicUsize, Ordering},
@@ -55,9 +54,7 @@
 //! };
 //!
 //! const MAX_THREADS: usize = 8;
-//! lazy_static! {
-//!     static ref DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
-//! }
+//! static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 //!
 //! struct TestNode {
 //!    foo: usize
@@ -127,7 +124,6 @@ mod primitive {
         }
         pub(crate) use loom::sync::Arc;
     }
-    pub(crate) use loom::lazy_static;
     pub(crate) use loom::thread;
     pub(crate) use loom::thread_local;
 }
@@ -176,8 +172,6 @@ mod primitive {
     pub(crate) use std::thread;
 
     pub(crate) use std::thread_local;
-
-    pub(crate) use lazy_static::lazy_static;
 }
 
 mod batch;
