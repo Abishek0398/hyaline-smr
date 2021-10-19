@@ -195,15 +195,11 @@ impl<'a> Iterator for Iter<'a> {
 #[cfg(all(test, not(loom)))]
 mod tests {
 
-    use crate::{collector::Collector, node::Node};
+    use crate::{node::Node, Collector};
 
     use super::{Batch, BatchHandle, BATCH_SIZE};
 
-    use lazy_static::lazy_static;
-
-    lazy_static! {
-        static ref COLLECTOR: Collector = Collector::new();
-    }
+    static COLLECTOR: Collector = Collector::new();
 
     fn node_producer(i: usize) -> Node {
         if i % 2 == 0 {

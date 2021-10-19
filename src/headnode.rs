@@ -13,7 +13,7 @@ pub(crate) struct HeadNode {
 }
 
 impl HeadNode {
-    pub(crate) fn new(head_ptr: Option<NonNull<Node>>, head_count: usize) -> Self {
+    pub(crate) const fn new(head_ptr: Option<NonNull<Node>>, head_count: usize) -> Self {
         HeadNode {
             head: AtomicDouble::new(NonAtomicHeadNode {
                 head_ptr,
