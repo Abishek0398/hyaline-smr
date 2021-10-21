@@ -18,7 +18,7 @@ This crate requires nightly.
 Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-hyaline_smr = "0.1.0"
+hyaline_smr = "0.1"
 ```
 
 ## Example

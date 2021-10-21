@@ -1,6 +1,6 @@
 [package]
 name = "hyaline-smr"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Abishek <abishek0398@gmail.com>"]
 edition = "2018"
 description = "Garbage Collector(Hyaline- Safe Memory Reclaimation) for lock free data structures"
